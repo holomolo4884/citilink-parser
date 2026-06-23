@@ -50,6 +50,7 @@
 ---
 
 ## 📁 Структура проекта
+```
 citilink_parser/
 ├── .env # Переменные окружения
 ├── .gitignore # Игнорируемые файлы
@@ -77,7 +78,7 @@ citilink_parser/
 └── logs/ # Логи работы
 ├── CitilinkParser_2026-06-23.log
 └── CitilinkParser_errors_2026-06-23.log
-
+```
 
 ---
 
