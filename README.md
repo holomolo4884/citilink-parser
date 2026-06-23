@@ -1,4 +1,4 @@
-# 🍳 Парсер  Citilink
+#  Парсер  Citilink
 
 Парсер собирает характеристики, цены и изображения с сайта [Citilink.ru](https://www.citilink.ru).
 
