@@ -1,7 +1,7 @@
 # src/utils.py
 # ============================================================
 # УТИЛИТЫ ДЛЯ СОХРАНЕНИЯ ДАННЫХ
-# Сохранение в JSON и CSV с прогресс-баром
+# JSON и CSV с прогресс-баром
 # ============================================================
 
 import json
@@ -10,32 +10,32 @@ from pathlib import Path
 from typing import List
 from src.models import CooktopProperties
 from src.logger import logger
-from tqdm import tqdm  # Прогресс-бар
+from src.config import OUTPUT
+from tqdm import tqdm  # Прогресс-бар для визуального контроля
 
 
-# ============================================================
-# СОХРАНЕНИЕ В JSON
-# ============================================================
-def save_results(data: List[CooktopProperties], filename: str = "output/results.json"):
+def save_results(data: List[CooktopProperties], filename: str = None):
     """
     Сохраняет данные в JSON файл.
     
     Аргументы:
         data: Список объектов CooktopProperties
-        filename: Путь к файлу (по умолчанию: output/results.json)
+        filename: Путь к файлу (если None - берётся из конфига)
     """
-    logger.info(f"Сохранение результатов в JSON: {filename}")
-
-    # Создаем папку output/, если её нет
+    # Берём имя файла из конфига, если не передано
+    if filename is None:
+        filename = OUTPUT.get('json_filename', 'output/results.json')
+    
+    logger.info(f"💾 Сохранение JSON: {filename}")
+    
+    # Создаём папку output/, если её нет
     output_path = Path(filename)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     
     # Подготавливаем данные для сохранения
     result_data = []
-    
-    # Проходим по всем моделям с прогресс-баром
     for item in tqdm(data, desc="  📝 Подготовка JSON"):
-        # Создаем словарь с базовыми полями
+        # Создаём словарь с базовыми полями
         item_dict = {
             "Бренд": item.brand,
             "Модель": item.model,
@@ -48,34 +48,34 @@ def save_results(data: List[CooktopProperties], filename: str = "output/results.
     
     # Сохраняем в JSON с отступами для читаемости
     with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(result_data, f, ensure_ascii=False, indent=2)
+        json.dump(result_data, f, ensure_ascii=False, indent=OUTPUT.get('json_indent', 2))
     
-    logger.info(f"JSON сохранён: {len(result_data)} записей")
+    logger.info(f"✅ JSON сохранён: {len(result_data)} записей")
 
 
-# ============================================================
-# СОХРАНЕНИЕ В CSV
-# ============================================================
-def save_as_csv(data: List[CooktopProperties], filename: str = "output/results.csv"):
+def save_as_csv(data: List[CooktopProperties], filename: str = None):
     """
     Сохраняет данные в CSV файл с разделителем ; (для Excel).
     
     Аргументы:
         data: Список объектов CooktopProperties
-        filename: Путь к файлу (по умолчанию: output/results.csv)
+        filename: Путь к файлу (если None - берётся из конфига)
     """
-    # Проверяем, есть ли данные
     if not data:
-        logger.warning("Нет данных для сохранения в CSV")
+        logger.warning("⚠️ Нет данных для CSV")
         return
     
-    logger.info(f"Сохранение результатов в CSV: {filename}")
+    # Берём имя файла из конфига, если не передано
+    if filename is None:
+        filename = OUTPUT.get('csv_filename', 'output/results.csv')
     
-    # Создаем папку output/, если её нет
+    logger.info(f"💾 Сохранение CSV: {filename}")
+    
+    # Создаём папку output/, если её нет
     output_path = Path(filename)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     
-    # ----- ШАГ 1: Собираем все данные и все возможные поля -----
+    # ----- Собираем все данные и все возможные поля -----
     all_rows = []          # Список словарей с данными
     all_fieldnames = set() # Множество всех названий полей
     
@@ -93,7 +93,7 @@ def save_as_csv(data: List[CooktopProperties], filename: str = "output/results.c
         all_rows.append(row)
         all_fieldnames.update(row.keys())
     
-    # ----- ШАГ 2: Сортируем поля -----
+    # ----- Сортируем поля -----
     # Базовые поля идут первыми (в фиксированном порядке)
     base_fields = ["Бренд", "Модель", "Цена", "Ссылка на изображение"]
     
@@ -103,16 +103,15 @@ def save_as_csv(data: List[CooktopProperties], filename: str = "output/results.c
     # Итоговый список полей
     fieldnames = base_fields + other_fields
     
-    # ----- ШАГ 3: Записываем CSV -----
-    with open(output_path, 'w', encoding='utf-8-sig', newline='') as f:
-        # Создаем writer с разделителем ; (точка с запятой)
+    # ----- Записываем CSV -----
+    # Берём настройки из конфига
+    delimiter = OUTPUT.get('csv_delimiter', ';')
+    encoding = OUTPUT.get('encoding', 'utf-8-sig')
+    
+    with open(output_path, 'w', encoding=encoding, newline='') as f:
+        # Создаём writer с разделителем ; (точка с запятой)
         # Все поля в кавычках (quoting=csv.QUOTE_ALL)
-        writer = csv.DictWriter(
-            f, 
-            fieldnames=fieldnames,
-            delimiter=';',
-            quoting=csv.QUOTE_ALL
-        )
+        writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter=delimiter, quoting=csv.QUOTE_ALL)
         
         # Записываем заголовки
         writer.writeheader()
@@ -128,30 +127,24 @@ def save_as_csv(data: List[CooktopProperties], filename: str = "output/results.c
                     clean_row[key] = value
             writer.writerow(clean_row)
     
-    logger.info(f"CSV сохранён: {len(all_rows)} записей, {len(fieldnames)} полей")
+    # ----- Выводим статистику -----
+    logger.info(f"✅ CSV сохранён: {len(all_rows)} записей, {len(fieldnames)} полей")
 
 
-# ============================================================
-# ВЫВОД СВОДКИ
-# ============================================================
 def print_summary(data: List[CooktopProperties]):
     """
-    Выводит краткую сводку по спарсенным данным.
-    
-    Аргументы:
-        data: Список объектов CooktopProperties
+    Выводит краткую сводку по спарсенным данным в консоль.
     """
     if not data:
-        logger.warning("Нет данных для сводки")
+        logger.warning("⚠️ Нет данных для сводки")
         return
     
-    logger.info("Вывод сводки по данным")
+    logger.info("📊 Вывод сводки")
     
     print("\n" + "=" * 60)
     print("📊 СВОДКА ПО СПАРСЕННЫМ ДАННЫМ:")
     print("=" * 60)
     
-    # Проходим по всем моделям и выводим основную информацию
     for i, item in enumerate(data, 1):
         brand = item.brand or "Не указан"
         model = item.model or "Не указана"

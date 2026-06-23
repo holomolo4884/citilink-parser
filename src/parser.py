@@ -13,10 +13,13 @@ from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from bs4 import BeautifulSoup
-from src.config import SELENIUM_SETTINGS, DELAYS
+from src.config import (
+    SELECTORS, SELENIUM_SETTINGS, DELAYS, WAIT_TIMEOUTS,
+    USER_AGENT, SEARCH_URL, PRICE_SELECTOR, IMAGE_CONTAINER_SELECTOR
+)
 from src.models import CooktopProperties
 from src.logger import logger
-from tenacity import retry, stop_after_attempt, wait_fixed
+from tenacity import retry, stop_after_attempt, wait_fixed  # Для повторных попыток
 import logging
 
 # Отключаем лишние логи (меньше мусора в консоли)
@@ -64,7 +67,7 @@ def get_driver():
     
     # Размер окна и User-Agent
     chrome_options.add_argument(f"--window-size={SELENIUM_SETTINGS.get('window_size', '1920,1080')}")
-    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+    chrome_options.add_argument(f"user-agent={USER_AGENT}")
     
     # Автоматически скачиваем и устанавливаем ChromeDriver
     service = Service(ChromeDriverManager().install())
@@ -100,9 +103,9 @@ def search_and_click_product(driver, model_name: str) -> str:
         URL страницы товара или None при ошибке
     """
     # Формируем URL для поиска (заменяем пробелы на +)
-    search_url = f"https://www.citilink.ru/search/?text={model_name.replace(' ', '+')}"
-    logger.info(f"Поиск товара: {model_name}")
-    logger.debug(f"URL поиска: {search_url}")
+    search_url = SEARCH_URL.format(query=model_name.replace(' ', '+'))
+    logger.info(f"🔍 Поиск: {model_name}")
+    logger.debug(f"URL: {search_url}")
     
     # Открываем страницу поиска
     driver.get(search_url)
@@ -111,32 +114,33 @@ def search_and_click_product(driver, model_name: str) -> str:
     try:
         # Ждем появления ссылки на товар (максимум 8 секунд)
         # Ищем по CSS-селектору: любая ссылка с /product/ в href
-        product_link = WebDriverWait(driver, 8).until(
+        product_link = WebDriverWait(driver, WAIT_TIMEOUTS['product_link']).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "a[href*='/product/']"))
         )
         
         # Получаем URL товара
         href = product_link.get_attribute("href")
-        logger.info(f"Найдена ссылка: {href}")
+        logger.info(f"✅ Найдена ссылка")
+        logger.debug(f"Ссылка: {href}")
         
         # Скроллим к ссылке (чтобы она точно была видна)
         driver.execute_script("arguments[0].scrollIntoView(true);", product_link)
-        time.sleep(0.3)
+        time.sleep(DELAYS['after_scroll'])
         
         # Кликаем через JavaScript (надежнее, чем обычный click)
         driver.execute_script("arguments[0].click();", product_link)
         time.sleep(DELAYS['after_click'])  # Ждем загрузки страницы товара
         
-        logger.info(f"Перешли на страницу товара: {driver.current_url}")
+        logger.info(f"✅ Перешли на страницу товара")
         return driver.current_url  # Возвращаем текущий URL
         
     except TimeoutException:
-        logger.error(f"Таймаут при поиске товара: {model_name}")
+        logger.error(f"❌ Таймаут при поиске: {model_name}")
         logger.exception(e)
         return None
     except Exception as e:
-        logger.error(f"Ошибка при поиске товара: {model_name}")
-        logger.exception(e)
+        logger.error(f"❌ Ошибка при поиске: {model_name}")
+        logger.debug(f"Детали: {e}")
         return None
 
 
@@ -151,7 +155,7 @@ def parse_price_and_image(driver) -> tuple:
     Возвращает:
         (price, image_url) - кортеж из двух значений
     """
-    logger.debug("Начинаем парсинг цены и картинки")
+    logger.debug("Парсинг цены и картинки")
     
     # Получаем HTML страницы
     html = driver.page_source
@@ -164,12 +168,12 @@ def parse_price_and_image(driver) -> tuple:
     
     # ---------- ПАРСИНГ ЦЕНЫ ----------
     # Ищем по известному CSS-классу цены
-    price_element = soup.find('span', class_=lambda c: c and 'e4ahr150' in c)
+    price_element = soup.find('span', class_=lambda c: c and PRICE_SELECTOR in c)
     
     if price_element:
         # Нашли цену по основному классу
         price = price_element.get_text(strip=True)
-        logger.info(f"Цена найдена: {price}")
+        logger.info(f"💰 Цена: {price}")
     else:
         # Альтернативный поиск: ищем любые элементы с "price" в классе и "₽" в тексте
         price_elements = soup.find_all('span', class_=lambda c: c and 'price' in str(c).lower())
@@ -177,34 +181,35 @@ def parse_price_and_image(driver) -> tuple:
             text = elem.get_text(strip=True)
             if text and '₽' in text:  # Проверяем, что это точно цена
                 price = text
-                logger.info(f"Цена найдена (альт): {price}")
+                logger.info(f"💰 Цена: {price}")
                 break
 
     if not price:
-        logger.warning("Цена не найдена")
+        logger.warning("⚠️ Цена не найдена")
     
     # ---------- ПАРСИНГ КАРТИНКИ ----------
     # Ищем контейнер с изображениями
-    image_container = soup.find('div', class_=lambda c: c and 'e9atu2e0' in c)
+    image_container = soup.find('div', class_=lambda c: c and IMAGE_CONTAINER_SELECTOR in c)
     
     if image_container:
         # Нашли контейнер, ищем в нем первую картинку
         img = image_container.find('img')
         if img and img.get('src'):
             image_url = img.get('src')
-            logger.debug(f"Картинка найдена: {image_url[:60]}...")
+            logger.debug(f"🖼️ Картинка найдена")
     else:
         # Альтернативный поиск: ищем картинки с product-images в src
-        images = soup.find_all('img', class_=lambda c: c and 'e19hktut0' in c)
+        images = soup.find_all('img')
         for img in images:
-            if img.get('src') and 'product-images' in img.get('src'):
-                image_url = img.get('src')
-                logger.debug(f"Картинка найдена (альт): {image_url[:60]}...")
+            src = img.get('src', '')
+            if 'product-images' in src:
+                image_url = src
+                logger.debug(f"🖼️ Картинка найдена")
                 break
     
     # Выводим найденное в консоль
     if not image_url:
-        logger.warning("Картинка не найдена")
+        logger.warning("⚠️ Картинка не найдена")
     
     return price, image_url
 
@@ -229,6 +234,7 @@ def get_full_title(title_container) -> str:
     """
     if not title_container:
         return ""
+    
     return ' '.join(title_container.get_text(strip=True).split())
 
 
@@ -240,7 +246,7 @@ def parse_properties_with_bs4(driver) -> dict:
     Парсит все характеристики товара со страницы /properties/.
     Возвращает словарь {название_характеристики: значение}.
     """
-    logger.debug("Начинаем парсинг характеристик")
+    logger.debug("Парсинг характеристик")
     
     # Получаем HTML и создаем BeautifulSoup с lxml
     html = driver.page_source
@@ -248,9 +254,14 @@ def parse_properties_with_bs4(driver) -> dict:
     
     properties = {}
     
-    # ----- ШАГ 1: Находим контейнер с характеристиками -----
+    # ----- Находим контейнер с характеристиками -----
     # Ищем по уникальному классу списка характеристик
-    properties_list = soup.find('ul', class_=lambda c: c and 'app-catalog-li9fsz-components--Properties' in c)
+    # Обычно контейнер имеет класс 'app-catalog-li9fsz-components--Properties'
+    # Берём первый класс из строки (он уникальный)
+    container_class = SELECTORS['properties_container'].split()[0] if SELECTORS['properties_container'] else 'app-catalog-li9fsz-components--Properties'
+
+    # Ищем по первому уникальному классу
+    properties_list = soup.find('ul', class_=lambda c: c and container_class in c if c else False)
     
     # Если не нашли - пробуем альтернативный класс
     if not properties_list:
@@ -258,21 +269,30 @@ def parse_properties_with_bs4(driver) -> dict:
     
     # Если контейнер не найден - возвращаем пустой словарь
     if not properties_list:
-        logger.warning("Контейнер с характеристиками не найден")
+        logger.warning("⚠️ Контейнер с характеристиками не найден")
         return {}
     
-    # ----- ШАГ 2: Находим все элементы с характеристиками -----
+    # ----- Находим все элементы с характеристиками -----
     # Каждая характеристика - это div с уникальным классом
-    property_items = properties_list.find_all('div', class_=lambda c: c and 'app-catalog-7g4f64-Flex' in c)
+    item_class = SELECTORS['property_item'].split()[0] if SELECTORS['property_item'] else 'app-catalog-7g4f64-Flex'
+
+    property_items = properties_list.find_all('div', class_=lambda c: c and item_class in c if c else False)
+
     logger.debug(f"Найдено элементов характеристик: {len(property_items)}")
+
+    # Получаем классы для поиска заголовка и значения из SELECTORS
+    title_class = SELECTORS['title_container'].split()[0] if SELECTORS['title_container'] else 'app-catalog-61b1vd-Flex'
+    value_class = SELECTORS['property_value'].split()[0] if SELECTORS['property_value'] else 'es7ht5z6'
     
-    # ----- ШАГ 3: Проходим по каждой характеристике -----
+    # ----- Проходим по каждой характеристике -----
     for item in property_items:
         # Находим контейнер с заголовком (название характеристики)
-        title_container = item.find('div', class_=lambda c: c and 'app-catalog-61b1vd-Flex' in c)
+        title_container = item.find('div', class_=lambda c: c and title_class in c if c else False)
         
-        # Находим элемент со значением характеристики
-        value_elem = item.find('span', class_=lambda c: c and 'es7ht5z6' in c)
+        # Находим элемент со значением
+        value_elem = item.find('span', class_=lambda c: c and value_class in c if c else False)
+        
+
         if not value_elem:
             # Альтернативный класс для значения
             value_elem = item.find('span', class_=lambda c: c and 'PropertiesValue' in c)
@@ -286,9 +306,10 @@ def parse_properties_with_bs4(driver) -> dict:
             # Если текст не пустой - добавляем в словарь
             if title_text and value_text:
                 properties[title_text] = value_text
-                logger.debug(f"  {title_text}: {value_text[:50]}...")
+                # Логируем первые 40 символов
+                logger.debug(f"  {title_text}: {value_text[:40]}...")  
 
-    logger.info(f"Собрано {len(properties)} характеристик")
+    logger.info(f"📋 Собрано {len(properties)} характеристик")
     return properties
 
 
@@ -312,43 +333,43 @@ def parse_cooktop_by_search(model_name: str) -> CooktopProperties:
     Возвращает:
         CooktopProperties - объект с данными
     """
-    logger.info(f"Начинаем парсинг: {model_name}")
+    logger.info(f"🚀 Начинаем парсинг: {model_name}")
     
 
     driver = None
     try:
-        # ----- ШАГ 1: Создаем драйвер -----
+        # ----- Создаем драйвер -----
         driver = get_driver()
         
-        # ----- ШАГ 2: Ищем товар и переходим на страницу -----
+        # ----- Ищем товар и переходим на страницу -----
         product_url = search_and_click_product(driver, model_name)
         if not product_url:
             # Если не удалось найти товар - возвращаем пустую модель
-            logger.error(f"Не удалось найти товар: {model_name}")
+            logger.error(f"❌ Товар не найден: {model_name}")
             return CooktopProperties()
         
-        # ----- ШАГ 3: Парсим цену и картинку -----
+        # ----- Парсим цену и картинку -----
         price, image_url = parse_price_and_image(driver)
         
-        # ----- ШАГ 4: Переходим на страницу характеристик -----
+        # ----- Переходим на страницу характеристик -----
         # Добавляем /properties/ к URL (убираем слеш в конце, если есть)
         properties_url = product_url.rstrip('/') + '/properties/'
         logger.debug(f"Переход на страницу характеристик: {properties_url}")
         driver.get(properties_url)
         time.sleep(DELAYS['after_properties'])
         
-        # ----- ШАГ 5: Парсим все характеристики -----
+        # ----- Парсим все характеристики -----
         raw_data = parse_properties_with_bs4(driver)
         
-        # ----- ШАГ 6: Добавляем цену и картинку в словарь -----
+        # ----- Добавляем цену и картинку в словарь -----
         raw_data['Цена'] = price
         raw_data['Ссылка на изображение'] = image_url
         
 
-        # ----- ШАГ 7: Создаем модель Pydantic -----
+        # ----- Создаем модель Pydantic -----
         cooktop = CooktopProperties(**raw_data)
         
-        # ----- ШАГ 8: Отделяем базовые поля от характеристик -----
+        # ----- Отделяем базовые поля от характеристик -----
         # Базовые поля - всегда есть у всех моделей
         base_fields = {'Бренд', 'Модель', 'Цена', 'Ссылка на изображение'}
         
@@ -363,12 +384,12 @@ def parse_cooktop_by_search(model_name: str) -> CooktopProperties:
         
     except Exception as e:
         # Обрабатываем любые ошибки
-        logger.error(f"Критическая ошибка при парсинге {model_name}")
-        logger.exception(e)
+        logger.error(f"❌ Критическая ошибка при парсинге {model_name}")
+        logger.debug(f"Детали: {e}")
         return CooktopProperties()
         
     finally:
-        # ----- ШАГ 9: Закрываем драйвер (освобождаем ресурсы) -----
+        # ----- Закрываем драйвер (освобождаем ресурсы) -----
         if driver:
             driver.quit()
             logger.debug("Драйвер закрыт")

@@ -1,4 +1,3 @@
-# main.py
 # ============================================================
 # ТОЧКА ВХОДА В ПРОГРАММУ
 # Запускает парсинг всех моделей из списка
@@ -7,27 +6,9 @@
 from src.parser import parse_cooktop_by_search
 from src.utils import save_results, save_as_csv, print_summary
 from src.logger import logger
+from src.config import MODELS_TO_PARSE, DELAYS
 from tqdm import tqdm  # Прогресс-бар
 import time
-import sys
-
-# ============================================================
-# СПИСОК МОДЕЛЕЙ ДЛЯ ПАРСИНГА
-# ============================================================
-# Добавляй сюда любые модели, которые нужно спарсить
-# Названия должны точно соответствовать тому, как они ищутся на сайте
-MODELS_TO_PARSE = [
-    "Gorenje ECT643SYB",
-    "Gorenje ECT641BCSC",
-    "Candy CHXC64TDB",
-    "Kuppersberg ECO 603",
-    "Kuppersberg 400",
-    "Kuppersberg ECS 635",
-    "Midea MCH-B632C",
-    "Kuppersberg ECS 624",
-    "Midea MCH-B641C",
-    "Weissgauff HV 633 BS"
-]
 
 
 # ============================================================
@@ -36,9 +17,9 @@ MODELS_TO_PARSE = [
 def main():
     """Главная функция: запускает парсинг и сохраняет результаты."""
     logger.info("=" * 60)
-    logger.info("ЗАПУСК ПАРСЕРА")
+    logger.info("🚀 ЗАПУСК ПАРСЕРА")
     logger.info("=" * 60)
-    logger.info(f"Моделей для парсинга: {len(MODELS_TO_PARSE)}")
+    logger.info(f"📦 Моделей: {len(MODELS_TO_PARSE)}")
     
     # ----- Парсим все модели -----
     results = []          # Список успешно спарсенных моделей
@@ -66,10 +47,7 @@ def main():
                     successful += 1
                     logger.info(f"✅ Успешно: {cooktop.brand} {cooktop.model}")
                     # Обновляем прогресс-бар с дополнительной информацией
-                    pbar.set_postfix({
-                        'успешно': successful,
-                        'ошибок': failed
-                    })
+                    pbar.set_postfix({'✅': successful, '❌': failed})
                 else:
                     failed += 1
                     logger.warning(f"❌ Не удалось спарсить: {model_name}")
@@ -77,7 +55,7 @@ def main():
             except Exception as e:
                 # Ловим любые ошибки
                 failed += 1
-                logger.error(f"Ошибка при парсинге {model_name}")
+                logger.error(f"❌ Ошибка: {model_name}")
                 logger.debug(f"Детали: {e}")
             
             # Обновляем прогресс-бар (одна модель обработана)
@@ -85,7 +63,7 @@ def main():
             
             # Пауза между запросами (чтобы не нагружать сайт)
             if idx < len(MODELS_TO_PARSE):
-                time.sleep(1)
+                time.sleep(DELAYS.get('between_requests', 1))
     
     # Вычисляем время выполнения
     elapsed_time = time.time() - start_time
@@ -105,9 +83,9 @@ def main():
         save_as_csv(results)
         # Выводим сводку
         print_summary(results)
-        logger.info("Парсинг завершен успешно")
+        logger.info("🎉 ПАРСИНГ ЗАВЕРШЕН")
     else:
-        logger.error("Не удалось спарсить ни одной модели")
+        logger.error("❌ Не удалось спарсить ни одной модели")
 
 
 # ============================================================
