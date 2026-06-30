@@ -3,11 +3,6 @@
 # Все настройки проекта в одном месте
 # ============================================================
 
-import os
-from dotenv import load_dotenv
-
-# Загружаем переменные из .env
-load_dotenv()
 
 # ============================================================
 #    НАСТРОЙКИ САЙТА
@@ -46,14 +41,14 @@ IMAGE_CONTAINER_SELECTOR = 'e9atu2e0'
 # ============================================================
 
 SELENIUM_SETTINGS = {
-    'headless': os.getenv('HEADLESS', 'true').lower() == 'true',  # True = браузер невидим (быстрее), False = виден (для отладки)
+    'headless': True,  # True = браузер невидим (быстрее), False = виден (для отладки)
     'window_size': '1920,1080',  # Размер окна браузера
-    'implicitly_wait': int(os.getenv("IMPLICITLY_WAIT", 3)),  # Максимальное время ожидания элементов (сек)
-    'page_load_timeout': int(os.getenv('PAGE_LOAD_TIMEOUT', 20)),  # Таймаут загрузки страницы (сек)
+    'implicitly_wait': 10,  # Максимальное время ожидания элементов (сек)
+    'page_load_timeout': 60,  # Таймаут загрузки страницы (сек)
 }
 
 # User-Agent для браузера (имитируем реальный браузер)
-USER_AGENT = os.getenv('USER_AGENT', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 
 
 # ============================================================
@@ -61,17 +56,17 @@ USER_AGENT = os.getenv('USER_AGENT', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) 
 # ============================================================
 
 DELAYS = {
-    'between_requests':float(os.getenv('DELAY_BETWEEN_REQUESTS', 1.0)), # Пауза между запросами к разным моделям (сек)
-    'after_click': float(os.getenv('DELAY_AFTER_CLICK', 1.5)), # Пауза после клика по ссылке (сек)
-    'after_search': float(os.getenv('DELAY_AFTER_SEARCH', 1.5)), # Пауза после загрузки результатов поиска (сек)
-    'after_properties': float(os.getenv('AFTER_PROPERTIES', 1.0)),  # Пауза после загрузки страницы характеристик (сек)
-    'after_scroll': float(os.getenv('AFTER_SCROLL', 0.3)),  # Пауза после скролла (сек)
+    'between_requests': 1.0, # Пауза между запросами к разным моделям (сек)
+    'after_click': 1.5, # Пауза после клика по ссылке (сек)
+    'after_search': 1.5, # Пауза после загрузки результатов поиска (сек)
+    'after_properties': 1.0,  # Пауза после загрузки страницы характеристик (сек)
+    'after_scroll': 0.3,  # Пауза после скролла (сек)
 }
 
 # Таймауты для WebDriverWait (ожидание элементов на странице)
 WAIT_TIMEOUTS = {
-    'product_link': int(os.getenv("PRODUCT_LINK", 8)),  # Ожидание ссылки на товар (сек)
-    'page_load': int(os.getenv("PAGE_LOAD", 10)),  # Ожидание загрузки страницы (сек)
+    'product_link': 15,  # Ожидание ссылки на товар (сек)
+    'page_load': 20,  # Ожидание загрузки страницы (сек)
 }
 
 
@@ -97,7 +92,7 @@ LOGGING = {
 OUTPUT = {
     'json_filename': 'output/results.json',  # Имя файла для JSON
     'csv_filename': 'output/results.csv',    # Имя файла для CSV
-    'json_indent': 2,           # Отступы в JSON (для читаемости)
+    'json_indent': 4,           # Отступы в JSON (для читаемости)
     'csv_delimiter': ';',       # Разделитель в CSV (точка с запятой для Excel)
     'encoding': 'utf-8-sig',    # Кодировка для CSV (с BOM для Excel)
 }
@@ -108,12 +103,7 @@ OUTPUT = {
 # ============================================================
 
 # Модели для парсинга (названия должны точно совпадать с поиском на сайте)
-models_env = os.getenv('MODELS_TO_PARSE')
-if models_env:
-    MODELS_TO_PARSE = [m.strip() for m in models_env.split(',')]
-else:
-    # Если в .env нет — используем список из кода
-    MODELS_TO_PARSE = [
+MODELS_TO_PARSE = [
         "Gorenje ECT643SYB",
         "Gorenje ECT641BCSC",
         "Candy CHXC64TDB",
@@ -124,4 +114,4 @@ else:
         "Kuppersberg ECS 624",
         "Midea MCH-B641C",
         "Weissgauff HV 633 BS"
-    ]
+        ]

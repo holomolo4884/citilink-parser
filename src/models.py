@@ -7,9 +7,9 @@ from pydantic import BaseModel, Field
 from typing import Optional, Dict
 
 
-class CooktopProperties(BaseModel):
+class Properties(BaseModel):
     """
-    Модель данных для варочной панели.
+    Модель данных.
     Pydantic автоматически валидирует типы и преобразует данные.
     """
     

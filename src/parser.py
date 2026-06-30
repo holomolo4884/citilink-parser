@@ -5,6 +5,7 @@
 
 import time
 from selenium import webdriver
+from selenium.webdriver.chrome.webdriver import WebDriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -17,7 +18,7 @@ from src.config import (
     SELECTORS, SELENIUM_SETTINGS, DELAYS, WAIT_TIMEOUTS,
     USER_AGENT, SEARCH_URL, PRICE_SELECTOR, IMAGE_CONTAINER_SELECTOR
 )
-from src.models import CooktopProperties
+from src.models import Properties
 from src.logger import logger
 from tenacity import retry, stop_after_attempt, wait_fixed  # Для повторных попыток
 import logging
@@ -30,7 +31,7 @@ logging.getLogger('webdriver_manager').setLevel(logging.WARNING)
 # ============================================================
 # ФУНКЦИЯ: СОЗДАНИЕ ДРАЙВЕРА
 # ============================================================
-def get_driver():
+def get_driver() -> WebDriver:
     """
     Создает и настраивает драйвер Chrome.
     - headless режим для скорости
@@ -66,7 +67,7 @@ def get_driver():
     chrome_options.add_experimental_option('useAutomationExtension', False)
     
     # Размер окна и User-Agent
-    chrome_options.add_argument(f"--window-size={SELENIUM_SETTINGS.get('window_size', '1920,1080')}")
+    chrome_options.add_argument(f"--window-size={SELENIUM_SETTINGS.get('window_size')}")
     chrome_options.add_argument(f"user-agent={USER_AGENT}")
     
     # Автоматически скачиваем и устанавливаем ChromeDriver
@@ -79,8 +80,8 @@ def get_driver():
     driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     
     # Устанавливаем таймауты
-    driver.implicitly_wait(SELENIUM_SETTINGS.get('implicitly_wait', 3))
-    driver.set_page_load_timeout(SELENIUM_SETTINGS.get('page_load_timeout', 20))
+    driver.implicitly_wait(SELENIUM_SETTINGS.get('implicitly_wait'))
+    driver.set_page_load_timeout(SELENIUM_SETTINGS.get('page_load_timeout'))
 
     logger.debug("Драйвер создан успешно")
     return driver
@@ -316,7 +317,7 @@ def parse_properties_with_bs4(driver) -> dict:
 # ============================================================
 # ГЛАВНАЯ ФУНКЦИЯ ПАРСИНГА
 # ============================================================
-def parse_cooktop_by_search(model_name: str) -> CooktopProperties:
+def parse_by_search(model_name: str) -> Properties:
     """
     Главная функция: собирает все данные о товаре.
     
@@ -331,10 +332,11 @@ def parse_cooktop_by_search(model_name: str) -> CooktopProperties:
         model_name: Название модели для поиска
         
     Возвращает:
-        CooktopProperties - объект с данными
+        Properties - объект с данными
     """
     logger.info(f"🚀 Начинаем парсинг: {model_name}")
-    
+    start_time = time.time()
+
 
     driver = None
     try:
@@ -346,7 +348,7 @@ def parse_cooktop_by_search(model_name: str) -> CooktopProperties:
         if not product_url:
             # Если не удалось найти товар - возвращаем пустую модель
             logger.error(f"❌ Товар не найден: {model_name}")
-            return CooktopProperties()
+            return Properties()
         
         # ----- Парсим цену и картинку -----
         price, image_url = parse_price_and_image(driver)
@@ -367,28 +369,30 @@ def parse_cooktop_by_search(model_name: str) -> CooktopProperties:
         
 
         # ----- Создаем модель Pydantic -----
-        cooktop = CooktopProperties(**raw_data)
+        properties = Properties(**raw_data)
         
         # ----- Отделяем базовые поля от характеристик -----
         # Базовые поля - всегда есть у всех моделей
         base_fields = {'Бренд', 'Модель', 'Цена', 'Ссылка на изображение'}
         
         # Все остальные поля сохраняем в словарь characteristics
-        cooktop.characteristics = {
+        properties .characteristics = {
             key: value for key, value in raw_data.items() 
             if key not in base_fields
         }
         
-        logger.info(f"✅ {cooktop.brand} {cooktop.model} — {len(cooktop.characteristics)} хар-к, цена: {price}")
-        return cooktop
+        logger.info(f"✅ {properties .brand} {properties .model} — {len(properties .characteristics)} хар-к, цена: {price}")
+        return properties 
         
     except Exception as e:
         # Обрабатываем любые ошибки
         logger.error(f"❌ Критическая ошибка при парсинге {model_name}")
         logger.debug(f"Детали: {e}")
-        return CooktopProperties()
-        
+        return Properties()
+
     finally:
+        elapsed = time.time() - start_time
+        logger.info(f"⏱️ Парсинг {model_name} занял {elapsed:.2f} сек")
         # ----- Закрываем драйвер (освобождаем ресурсы) -----
         if driver:
             driver.quit()
@@ -396,4 +400,4 @@ def parse_cooktop_by_search(model_name: str) -> CooktopProperties:
 
 
 # Алиас для совместимости с другими частями кода
-parse_cooktop = parse_cooktop_by_search
+parse = parse_by_search

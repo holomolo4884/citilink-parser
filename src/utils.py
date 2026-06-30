@@ -8,18 +8,18 @@ import json
 import csv
 from pathlib import Path
 from typing import List
-from src.models import CooktopProperties
+from src.models import Properties
 from src.logger import logger
 from src.config import OUTPUT
 from tqdm import tqdm  # Прогресс-бар для визуального контроля
 
 
-def save_results(data: List[CooktopProperties], filename: str = None):
+def save_results(data: List[Properties], filename: str = None) -> None:
     """
     Сохраняет данные в JSON файл.
     
     Аргументы:
-        data: Список объектов CooktopProperties
+        data: Список объектов Properties
         filename: Путь к файлу (если None - берётся из конфига)
     """
     # Берём имя файла из конфига, если не передано
@@ -53,7 +53,7 @@ def save_results(data: List[CooktopProperties], filename: str = None):
     logger.info(f"✅ JSON сохранён: {len(result_data)} записей")
 
 
-def save_as_csv(data: List[CooktopProperties], filename: str = None):
+def save_as_csv(data: List[Properties], filename: str = None) -> None:
     """
     Сохраняет данные в CSV файл с разделителем ; (для Excel).
     
@@ -131,7 +131,7 @@ def save_as_csv(data: List[CooktopProperties], filename: str = None):
     logger.info(f"✅ CSV сохранён: {len(all_rows)} записей, {len(fieldnames)} полей")
 
 
-def print_summary(data: List[CooktopProperties]):
+def print_summary(data: List[Properties]) -> None:
     """
     Выводит краткую сводку по спарсенным данным в консоль.
     """

@@ -2,94 +2,107 @@
 # ТОЧКА ВХОДА В ПРОГРАММУ
 # Запускает парсинг всех моделей из списка
 # ============================================================
+from dotenv import load_dotenv
+import os
+import asyncio
 
-from src.parser import parse_cooktop_by_search
-from src.utils import save_results, save_as_csv, print_summary
+from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram.client.telegram import TelegramAPIServer
+from aiogram.fsm.storage.memory import MemoryStorage
+
 from src.logger import logger
-from src.config import MODELS_TO_PARSE, DELAYS
-from tqdm import tqdm  # Прогресс-бар
-import time
+from src.config import MODELS_TO_PARSE
+from app.handlers import router
+
+
+load_dotenv()
+
+TOKEN = os.getenv('TOKEN')
+WORKER_URL = os.getenv('WORKER_URL')
+
+# Проверка обязательных переменных
+if not TOKEN:
+    raise ValueError("❌ TOKEN не найден в .env файле!")
+if not WORKER_URL:
+    raise ValueError("❌ WORKER_URL не найден в .env файле!")
 
 
 # ============================================================
 # ГЛАВНАЯ ФУНКЦИЯ
 # ============================================================
-def main():
+async def main() -> None:
     """Главная функция: запускает парсинг и сохраняет результаты."""
+    
     logger.info("=" * 60)
     logger.info("🚀 ЗАПУСК ПАРСЕРА")
     logger.info("=" * 60)
     logger.info(f"📦 Моделей: {len(MODELS_TO_PARSE)}")
-    
-    # ----- Парсим все модели -----
-    results = []          # Список успешно спарсенных моделей
-    successful = 0        # Счетчик успешных парсингов
-    failed = 0            # Счетчик ошибок
-    
-    # Общее время выполнения
-    start_time = time.time()
 
-    # Прогресс-бар для визуального контроля
-    with tqdm(total=len(MODELS_TO_PARSE), desc="📊 Парсинг", unit="модель") as pbar:
-        
-        for idx, model_name in enumerate(MODELS_TO_PARSE, 1):
-            # Обновляем описание прогресс-бара (показываем текущую модель)
-            pbar.set_description(f"📊 {model_name[:20]}")
-            
-            try:
-                # Парсим текущую модель
-                cooktop = parse_cooktop_by_search(model_name)
-                logger.info(f"[{idx}/{len(MODELS_TO_PARSE)}] Парсинг: {model_name}")
-                
-                # Проверяем, удалось ли спарсить
-                if cooktop.brand and cooktop.model:
-                    results.append(cooktop)
-                    successful += 1
-                    logger.info(f"✅ Успешно: {cooktop.brand} {cooktop.model}")
-                    # Обновляем прогресс-бар с дополнительной информацией
-                    pbar.set_postfix({'✅': successful, '❌': failed})
-                else:
-                    failed += 1
-                    logger.warning(f"❌ Не удалось спарсить: {model_name}")
-                    
-            except Exception as e:
-                # Ловим любые ошибки
-                failed += 1
-                logger.error(f"❌ Ошибка: {model_name}")
-                logger.debug(f"Детали: {e}")
-            
-            # Обновляем прогресс-бар (одна модель обработана)
-            pbar.update(1)
-            
-            # Пауза между запросами (чтобы не нагружать сайт)
-            if idx < len(MODELS_TO_PARSE):
-                time.sleep(DELAYS.get('between_requests', 1))
-    
-    # Вычисляем время выполнения
-    elapsed_time = time.time() - start_time
+    # Если WORKER_URL есть - используем прокси через сессию
+    if WORKER_URL:
+        logger.info(f"🌐 Используется прокси: {WORKER_URL}")
 
-    # ----- Выводим статистику -----
-    logger.info("=" * 60)
-    logger.info("📊 СТАТИСТИКА:")
-    logger.info(f"  ✅ Успешно: {successful}")
-    logger.info(f"  ❌ Ошибок: {failed}")
-    logger.info(f"  ⏱️ Время: {elapsed_time:.2f} сек")
+        # Создаем объект TelegramAPIServer с вашим прокси
+        api_server = TelegramAPIServer.from_base(WORKER_URL)
 
-    # ----- Сохраняем результаты -----
-    if results:
-        # Сохраняем в JSON
-        save_results(results)
-        # Сохраняем в CSV
-        save_as_csv(results)
-        # Выводим сводку
-        print_summary(results)
-        logger.info("🎉 ПАРСИНГ ЗАВЕРШЕН")
+        # Создаем сессию
+        session = AiohttpSession(
+            api=api_server
+        )
+
+        # Передаем сессию в Bot
+        bot = Bot(
+            token=TOKEN,
+            default=DefaultBotProperties(
+                parse_mode="HTML"
+            ),
+            session=session
+        )
     else:
-        logger.error("❌ Не удалось спарсить ни одной модели")
+        # Без прокси
+        logger.info("🌐 Прямое подключение (без прокси)")
+        bot = Bot(
+            token=TOKEN,
+            default=DefaultBotProperties(parse_mode="HTML")
+        )
 
+    # Проверяем подключение к Telegram
+    try:
+        me = await bot.get_me()
+        logger.info(f"✅ Бот подключен: @{me.username} (ID: {me.id})")
+    except Exception as e:
+        logger.error(f"❌ Не удалось подключиться к Telegram: {e}")
+        logger.error("Проверьте интернет-соединение и доступ к api.telegram.org")
+        return
+    
+    storage = MemoryStorage()
+
+    dp = Dispatcher(storage=storage)
+
+    dp.include_router(router)
+
+    logger.info("🔄 Запуск поллинга...")
+    try:
+        await dp.start_polling(
+            bot,
+            skip_updates=True,  # Пропускаем старые обновления
+            allowed_updates=["message", "callback_query"]  # Только нужные типы
+        )
+    except Exception as e:
+        logger.error(f"❌ Ошибка поллинга: {e}")
+    finally:
+        await bot.session.close()
+        logger.info("👋 Сессия закрыта")
 
 # ============================================================
 # ЗАПУСК ПРОГРАММЫ
 # ============================================================
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("⏹️ Бот остановлен пользователем")
+    except Exception as e:
+        logger.error(f"❌ Критическая ошибка: {e}")
